@@ -13,6 +13,7 @@ class Expense:
     date: str = ""
 
     def __post_init__(self):
+        #комментарий для примера отслеживания изменений в git
         if not self.date:
             self.date = date.today().isoformat()
 
@@ -24,7 +25,7 @@ class Expense:
     
 @dataclass
 class RecurringExpense(Expense):
-    "Определён для упражнения, в трекер не идёт."
+    """Определён для упражнения, в трекер не идёт."""
     period: str = ""
 
     def describe(self):
