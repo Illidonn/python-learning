@@ -1,11 +1,8 @@
 # Окружение
-.venv
-venv/
+.venv/
 
 # Кэш
 __pycache__/
-*.pyc
-*.pyo
 
 # секреты и переменные окружения
 .env
@@ -13,3 +10,6 @@ __pycache__/
 
 # IDE
 .vscode/
+
+# Мой файл, личные данные
+expenses.json
