@@ -1,0 +1,15 @@
+# Окружение
+.venv
+venv/
+
+# Кэш
+__pycache__/
+*.pyc
+*.pyo
+
+# секреты и переменные окружения
+.env
+.env.local
+
+# IDE
+.vscode/
