@@ -15,10 +15,3 @@ class Expense:
         if self.comment:
             return f"{self.date} | {self.category} | {self.amount} ₽ ({self.comment})"
         return f"{self.date} | {self.category} | {self.amount} ₽"
-
-
-lunch = Expense(350.25, "Еда", "обед")
-metro = Expense(60, "Транспорт")
-
-print(lunch.describe())
-print(metro.describe())
