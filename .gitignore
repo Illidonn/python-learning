@@ -7,6 +7,7 @@ __pycache__/
 # секреты и переменные окружения
 .env
 .env.local
+config.py
 
 # IDE
 .vscode/
