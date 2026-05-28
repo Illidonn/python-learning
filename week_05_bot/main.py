@@ -21,11 +21,7 @@ dp = Dispatcher()
 
 def track_visit(filename, user_id):
     user_id = str(user_id)
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        data = {}
+    data = read_visits_file(filename)
 
     data[user_id] = data.get(user_id, 0) + 1
 
@@ -33,6 +29,15 @@ def track_visit(filename, user_id):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
     return data[user_id]
+
+def read_visits_file(filename):
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = {}
+    
+    return data
 
 @dp.message(F.text & ~F.text.startswith('/'))
 async def text_echo_handler(message: Message) -> None:
@@ -55,8 +60,22 @@ async def command_help_handler(message: Message) -> None:
     """
     Этот хендлер получает сообщение от команды пользователя `/help`
     """
-    await message.answer("Сейчас я умею только здороваться. Напиши /start, чтобы я с тобой поздоровался.")
+    await message.answer("Умею здороваться.\n"
+                         "Также собираю статистику: количество уникальных пользователей и их визитов.\n"
+                         "Напиши /start, чтобы я с тобой поздоровался.\n"
+                         "Напиши /stats, чтобы увидеть счётчик своих визитов и количество уникальных пользователей бота.\n")
 
+@dp.message(Command("stats"))
+async def command_stats_handler(message: Message) -> None:
+    """
+    Этот хендлер получает сообщение от команды пользователя `/stats`.
+    Показывает пользователю его личный счётчик визитов (сколько раз он жал /start) 
+    и сколько всего уникальных пользователей у бота.
+    """
+    data = read_visits_file(VISITS_FILE)
+    num_visit = data.get(str(message.from_user.id), 0)
+    total_users = len(data)
+    await message.answer(f"Твой счётчик визитов: {num_visit}. Количество уникальных пользователей у бота - {total_users}")
 
 async def main() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
