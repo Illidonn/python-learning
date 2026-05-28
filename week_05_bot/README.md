@@ -2,8 +2,6 @@
 
 Простой Telegram-бот на aiogram: здоровается, считает визиты и отдаёт статистику по пользователям.
 
-Это мой первый проект на Python, так что код учебный.
-
 ## Что умеет
 
 - `/start` — приветствует пользователя.
@@ -23,25 +21,25 @@
 
    ```bash
    git clone <ссылка-на-репозиторий>
-   cd <папка-проекта>
+   cd week_05_bot
    ```
 
 2. Создай и активируй виртуальное окружение:
 
    ```bash
-   python -m venv venv
+   python -m venv .venv
    ```
 
    - Linux / macOS:
 
      ```bash
-     source venv/bin/activate
+     source .venv/bin/activate
      ```
 
    - Windows:
 
      ```bash
-     venv\Scripts\activate
+     .venv\Scripts\activate
      ```
 
 3. Установи зависимости:
