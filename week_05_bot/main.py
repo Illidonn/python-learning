@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-import json
+import sqlite3
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher, html, F
@@ -14,30 +14,30 @@ from config import BOT_TOKEN
 
 
 BASE_DIR = Path(__file__).resolve().parent
-VISITS_FILE = BASE_DIR / "visits.json"
+VISITS_DB = BASE_DIR / "visits.db"
 
 dp = Dispatcher()
 
+def init_db():
+    con = sqlite3.connect(VISITS_DB)
+    cur = con.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS visits (user_id INTEGER PRIMARY KEY, visit_count INTEGER);")
+    con.commit()
+    con.close()
 
-def track_visit(filename, user_id):
-    user_id = str(user_id)
-    data = read_visits_file(filename)
+def track_visit(user_id):
+    con = sqlite3.connect(VISITS_DB)
+    cur = con.cursor()
 
-    data[user_id] = data.get(user_id, 0) + 1
-
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    return data[user_id]
-
-def read_visits_file(filename):
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        data = {}
-    
-    return data
+    sql_query = "INSERT INTO visits (user_id, visit_count) " \
+    "VALUES (?, 1) " \
+    "ON CONFLICT(user_id) DO UPDATE SET visit_count = visit_count + 1 " \
+    "RETURNING visit_count"
+    cur.execute(sql_query, (user_id,))
+    num_visit = cur.fetchone()[0]
+    con.commit()
+    con.close()
+    return num_visit
 
 @dp.message(F.text & ~F.text.startswith('/'))
 async def text_echo_handler(message: Message) -> None:
@@ -52,7 +52,7 @@ async def command_start_handler(message: Message) -> None:
     Этот хендлер получает сообщение от команды пользователя `/start`.
     Также ведёт счётчик посещений бота + сообщает номер посещения пользователю.
     """
-    num_visit = track_visit(VISITS_FILE, message.from_user.id)
+    num_visit = track_visit(message.from_user.id)
     await message.answer(f"Привет, {html.bold(message.from_user.full_name)}! Номер твоего визита к данному боту - {num_visit}")
 
 @dp.message(Command("help"))
@@ -63,7 +63,8 @@ async def command_help_handler(message: Message) -> None:
     await message.answer("Умею здороваться.\n"
                          "Также собираю статистику: количество уникальных пользователей и их визитов.\n"
                          "Напиши /start, чтобы я с тобой поздоровался.\n"
-                         "Напиши /stats, чтобы увидеть счётчик своих визитов и количество уникальных пользователей бота.\n")
+                         "Напиши /stats, чтобы увидеть счётчик своих визитов и количество уникальных пользователей бота.\n"
+                         "На обычный текст я реагирую как эхо.\n")
 
 @dp.message(Command("stats"))
 async def command_stats_handler(message: Message) -> None:
@@ -72,16 +73,26 @@ async def command_stats_handler(message: Message) -> None:
     Показывает пользователю его личный счётчик визитов (сколько раз он жал /start) 
     и сколько всего уникальных пользователей у бота.
     """
-    data = read_visits_file(VISITS_FILE)
-    num_visit = data.get(str(message.from_user.id), 0)
-    total_users = len(data)
+    con = sqlite3.connect(VISITS_DB)
+    cur = con.cursor()
+    sql_query = "SELECT visit_count FROM visits WHERE user_id = ?"
+    cur.execute(sql_query, (message.from_user.id, ))
+    result = cur.fetchone()
+    if result:
+        num_visit = result[0]
+    else:
+        num_visit = 0
+    cur.execute("SELECT COUNT(*) FROM visits")
+    total_users = cur.fetchone()[0]
+    con.close()
+    
     await message.answer(f"Твой счётчик визитов: {num_visit}. Количество уникальных пользователей у бота - {total_users}")
 
 async def main() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-
+    init_db()
     await dp.start_polling(bot)
-
+    
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
