@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher, html, F
@@ -26,17 +27,17 @@ def init_db():
     con.close()
 
 def track_visit(user_id):
-    con = sqlite3.connect(VISITS_DB)
-    cur = con.cursor()
+    with closing(sqlite3.connect(VISITS_DB)) as con:
+        with con:
+            cur = con.cursor()
 
-    sql_query = "INSERT INTO visits (user_id, visit_count) " \
-    "VALUES (?, 1) " \
-    "ON CONFLICT(user_id) DO UPDATE SET visit_count = visit_count + 1 " \
-    "RETURNING visit_count"
-    cur.execute(sql_query, (user_id,))
-    num_visit = cur.fetchone()[0]
-    con.commit()
-    con.close()
+            sql_query = """INSERT INTO visits (user_id, visit_count)
+                           VALUES (?, 1) 
+                           ON CONFLICT(user_id) DO UPDATE    SET visit_count = visit_count + 1 
+                           RETURNING visit_count"""
+            cur.execute(sql_query, (user_id,))
+            num_visit = cur.fetchone()[0]
+      
     return num_visit
 
 @dp.message(F.text & ~F.text.startswith('/'))
