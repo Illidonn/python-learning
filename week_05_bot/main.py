@@ -89,6 +89,26 @@ async def command_stats_handler(message: Message) -> None:
     
     await message.answer(f"Твой счётчик визитов: {num_visit}. Количество уникальных пользователей у бота - {total_users}")
 
+@dp.message(Command("top"))
+async def command_top_handler(message: Message) -> None:
+    
+    with closing(sqlite3.connect(VISITS_DB)) as con:
+        cur = con.cursor()
+
+        cur.execute(
+        """SELECT user_id, visit_count 
+        FROM visits 
+        ORDER BY visit_count DESC 
+        LIMIT 5;""")
+        rows = cur.fetchall()
+
+    if rows: 
+        text = "\n".join([f"{rank}. {user_id}: {count}" for rank, (user_id, count) in enumerate(rows, start=1)])
+    else:
+        text = "Список пользователей пока пуст."
+     
+    await message.answer(text)
+
 async def main() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     init_db()
