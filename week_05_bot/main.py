@@ -20,11 +20,9 @@ VISITS_DB = BASE_DIR / "visits.db"
 dp = Dispatcher()
 
 def init_db():
-    con = sqlite3.connect(VISITS_DB)
-    cur = con.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS visits (user_id INTEGER PRIMARY KEY, visit_count INTEGER);")
-    con.commit()
-    con.close()
+    with closing(sqlite3.connect(VISITS_DB)) as con:
+        with con:
+            con.execute("""CREATE TABLE IF NOT EXISTS visits (user_id INTEGER PRIMARY KEY, visit_count INTEGER);""")
 
 def track_visit(user_id):
     with closing(sqlite3.connect(VISITS_DB)) as con:
