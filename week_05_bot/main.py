@@ -1,14 +1,16 @@
 import asyncio
+import aiohttp
 import logging
 import sys
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+import time
 
 from aiogram import Bot, Dispatcher, html, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import Message
 
 from config import BOT_TOKEN
@@ -16,6 +18,8 @@ from config import BOT_TOKEN
 
 BASE_DIR = Path(__file__).resolve().parent
 VISITS_DB = BASE_DIR / "visits.db"
+RATE_CACHE = BASE_DIR / "rate_cache.db"
+CACHE_TTL = 3600
 
 dp = Dispatcher()
 
@@ -23,6 +27,9 @@ def init_db():
     with closing(sqlite3.connect(VISITS_DB)) as con:
         with con:
             con.execute("""CREATE TABLE IF NOT EXISTS visits (user_id INTEGER PRIMARY KEY, visit_count INTEGER);""")
+    with closing(sqlite3.connect(RATE_CACHE)) as con:
+        with con:
+            con.execute("""CREATE TABLE IF NOT EXISTS rate_cache (currency TEXT PRIMARY KEY, rate REAL, fetched_at INTEGER);""")
 
 def track_visit(user_id):
     with closing(sqlite3.connect(VISITS_DB)) as con:
@@ -37,6 +44,41 @@ def track_visit(user_id):
             num_visit = cur.fetchone()[0]
       
     return num_visit
+
+async def get_rate(currency):
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(f'https://open.er-api.com/v6/latest/{currency}') as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            
+        if data['result'] != 'success':
+            raise ValueError(f"unsupported currency: {currency}")    
+        return str(data["rates"]["RUB"])
+
+async def get_rate_cache(currency):
+    with closing(sqlite3.connect(RATE_CACHE)) as con:
+        cur = con.cursor()
+        sql_query = """SELECT rate, fetched_at FROM rate_cache
+                        WHERE currency = ?"""
+        cur.execute(sql_query, (currency,))
+        row = cur.fetchone()
+    if row is not None:
+        rate, fetched_at = row
+        if time.time() - fetched_at < CACHE_TTL:
+            return rate
+    
+    rate = await get_rate(currency)
+    with closing(sqlite3.connect(RATE_CACHE)) as con:
+        with con:
+            cur = con.cursor()
+            sql_query = """INSERT INTO rate_cache (currency, rate, fetched_at)
+                            VALUES (?, ?, ?) 
+                            ON CONFLICT(currency) DO UPDATE    SET rate = excluded.rate, fetched_at = excluded.fetched_at 
+                        """
+            cur.execute(sql_query, (currency, rate, int(time.time())))
+      
+    return rate
 
 @dp.message(F.text & ~F.text.startswith('/'))
 async def text_echo_handler(message: Message) -> None:
@@ -59,12 +101,15 @@ async def command_help_handler(message: Message) -> None:
     """
     Этот хендлер получает сообщение от команды пользователя /help
     """
-    await message.answer("Умею здороваться.\n"
-                         "Также собираю статистику: количество уникальных пользователей и их визитов.\n"
-                         "Напиши /start, чтобы я с тобой поздоровался. Также получишь информацию о количестве своих визитов (сколько раз ты написал /start)\n"
-                         "Напиши /stats, чтобы увидеть счётчик своих визитов и количество уникальных пользователей бота.\n"
-                         "Напиши /top, чтобы увидеть топ-5 id пользователей, писавших /start.\n"
-                         "На обычный текст я реагирую как эхо.\n")
+    await message.answer("-Умею здороваться.\n"
+                         "- Cобираю статистику: количество уникальных пользователей и их визитов.\n"
+                         "- Даю информацию об актуальном курсе валют относительно российского рубля.\n"
+                         "- На обычный текст я реагирую как эхо.\n"
+                         "Напиши:\n"
+                         "/start, чтобы я с тобой поздоровался. Также получишь информацию о количестве своих визитов (сколько раз ты написал /start)\n"
+                         "/stats, чтобы увидеть счётчик своих визитов и количество уникальных пользователей бота.\n"
+                         "/top, чтобы увидеть топ-5 id пользователей, писавших /start.\n"
+                         "/курс USD, чтобы получить стоимость валюты в российских рублях. Замени USD на трёхбуквенный код валюты, которая тебя интересует.\n")
 
 @dp.message(Command("stats"))
 async def command_stats_handler(message: Message) -> None:
@@ -107,6 +152,26 @@ async def command_top_handler(message: Message) -> None:
         text = "Список пользователей пока пуст."
      
     await message.answer(text)
+
+@dp.message(Command("курс"))
+async def command_rates_handler(message: Message, command: CommandObject) -> None:
+    currency = command.args
+    if currency:
+        upper_currency = currency.strip().upper()
+    else:
+        await message.answer("Введите трёхбуквенный код валюты.")
+        return
+   
+    try:
+        rate = await get_rate_cache(upper_currency)
+        await message.answer(f"1 {upper_currency} = {rate} RUB")
+    except ValueError:
+        await message.answer('Возможно допущена ошибка в наименовании валюты.')
+    except aiohttp.ClientError:
+        await message.answer("Не удалось получить курс, попробуйте позже.")
+    except asyncio.TimeoutError:
+        await message.answer('Превышено время ожидания от сервера.')
+
 
 async def main() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
